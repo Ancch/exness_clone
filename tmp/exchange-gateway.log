@@ -1,0 +1,13 @@
+
+> exchange-gateway@1.0.0 dev /home/ansh/projects/exness-ex/exness_clone/apps/exchange-gateway
+> tsx src/index.ts
+
+REDIS_URL not set — falling back to redis://127.0.0.1:6379 (development only)
+◇ injected env (5) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (0) from ../.env // tip: ⌁ auth for agents [www.vestauth.com]
+REDIS_URL not set — falling back to redis://127.0.0.1:6379 (development only)
+Creating Binance listenKey via https://testnet.binance.vision/api/v3/userDataStream
+Exchange Gateway running
+Exchange gateway HTTP self-test on port 4010
+Connecting to Binance user data stream at wss://stream.testnet.binance.vision/ws/undefined
+User Data Stream connected

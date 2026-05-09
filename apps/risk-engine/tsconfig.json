@@ -1,0 +1,13 @@
+{
+    "extends": "../../packages/typescript-config/base.json",
+    "compilerOptions": {
+    "rootDir": "../..",
+        "outDir": "./dist"
+        ,
+        "moduleResolution": "NodeNext",
+        "baseUrl": ".",
+        "paths": {
+            "@repo/*": ["../../packages/*/src"]
+        }
+    }
+}

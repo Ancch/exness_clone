@@ -1,0 +1,9 @@
+
+> risk-engine@1.0.0 dev /home/ansh/projects/exness-ex/exness_clone/apps/risk-engine
+> tsx src/index.ts
+
+Risk engine running
+◇ injected env (6) from ../../.env // tip: ⌘ suppress logs { quiet: true }
+◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ attempted to load .env files for DB config
+◇ DB env: host=localhost, port=5432, name=broke, user=postgres, password_type=string

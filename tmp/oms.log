@@ -1,0 +1,12 @@
+
+> oms@1.0.0 dev /home/ansh/projects/exness-ex/exness_clone/apps/oms
+> tsx src/index.ts
+
+◇ injected env (6) from ../../.env // tip: ⌘ enable debugging { debug: true }
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+◇ injected env (0) from ../../.env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+◇ attempted to load .env files for DB config
+◇ DB env: host=localhost, port=5432, name=broke, user=postgres, password_type=string
+Order service on port 4001
+ ELIFECYCLE� ELIFECYCLE  Command failed.
