@@ -454,21 +454,3 @@ SELECT * FROM ledger;
 ```
 
 ---
-
-# Inspiration
-
-Inspired by modern CFD broker architectures:
-
-- Exness
-- IC Markets
-- Pepperstone
-- Bybit CFD systems
-
-This project demonstrates:
-
-- Event-driven microservices
-- Real-time trading systems
-- Financial ledger architecture
-- Margin and leverage handling
-- Broker-style execution pipelines
-- Redis stream-based order execution
