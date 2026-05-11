@@ -1,159 +1,474 @@
-# Turborepo starter
+# Exless Trading Platform (Backend)
 
-This Turborepo starter is maintained by the Turborepo core team.
+A production-grade, real-time CFD trading backend built with a microservice architecture. It mimics a modern broker like Exness — supporting leveraged **LONG/SHORT** trading, internal synthetic execution, real-time market streaming, account-type-based spreads and commissions, and full margin/risk management.  
+The system uses **Redis Streams** for reliable order processing and **Redis Pub/Sub** for live frontend updates, all running on a shared Turborepo monorepo.
 
-## Using this example
+---
 
-Run the following command:
+## System architecture
 
-```sh
-npx create-turbo@latest
+![Exless system architecture](exless_architecture0.png)
+
+# Tech Stack
+
+| Layer               | Technology                                                                      |
+| ------------------- | ------------------------------------------------------------------------------- |
+| **Language**        | TypeScript                                                                      |
+| **Runtime**         | Node.js                                                                         |
+| **API Framework**   | Express                                                                         |
+| **Database**        | PostgreSQL (with TimescaleDB extension for time-series)                         |
+| **Messaging**       | Redis Streams (reliable order pipeline), Redis Pub/Sub (real-time broadcasting) |
+| **WebSocket**       | `ws` library – both for Binance ingestion and client push                       |
+| **Authentication**  | JWT (JSON Web Tokens) + bcrypt password hashing                                 |
+| **Monorepo Tool**   | Turborepo                                                                       |
+| **Package Manager** | pnpm                                                                            |
+
+---
+
+# Trading Logic
+
+## LONG Position Profit
+
+```txt
+Profit = (closePrice - openPrice) × quantity
 ```
 
-## What's inside?
+## SHORT Position Profit
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```txt
+Profit = (openPrice - closePrice) × quantity
 ```
 
-Without global `turbo`, use your package manager:
+## Margin Calculation
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+```txt
+requiredMargin = notionalValue / leverage
+notionalValue = executionPrice × quantity
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+### Example
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Position size (notional) = $10,000  
+Leverage = 1:100
 
-```sh
-turbo build --filter=docs
+Required Margin:
+
+```txt
+$10,000 / 100 = $100
 ```
 
-Without global `turbo`:
+---
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+## Account Fields
+
+| Field         | Meaning                                   |
+| ------------- | ----------------------------------------- |
+| `balance`     | Realised cash                             |
+| `equity`      | `balance + unrealisedPnL`                 |
+| `used_margin` | Total margin locked by all open positions |
+| `free_margin` | `equity – used_margin`                    |
+
+---
+
+# Redis Usage
+
+## Redis Streams (Reliable, Durable Order Processing)
+
+- **`orders_stream`** – Order Service pushes `{ orderId }`; Execution Engine consumes.
+- **`execution_requests`** – Engine sends order details to Internal Exchange.
+- **`execution_results`** – Internal Exchange returns fill outcome.
+- Consumer groups guarantee that orders are processed exactly once and survive service restarts.
+
+---
+
+## Redis Pub/Sub (Real-Time Broadcasting)
+
+- **`prices:ticker:<SYMBOL>`** – Broker spread-applied ticker (bid/ask/last).
+- **`prices:tick:<SYMBOL>`** – Raw trade ticks for candle aggregation.
+- **`candles:<SYMBOL>:<interval>`** – Closed candles pushed to chart clients.
+- **`orders_updates`** – Order status changes (`FILLED`, `REJECTED`).
+- **`position_updates`** – Position changes and real-time unrealised PnL.
+
+---
+
+## Redis Keys (Snapshot Cache)
+
+- **`raw:ticker:<SYMBOL>`** – Minimal-spread market price used by Internal Exchange for trade execution (stored every tick).
+
+---
+
+# Project Structure
+
+```txt
+├── apps
+│   ├── analytics
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── index.ts
+│   │   │   ├── pnlUpdate.ts
+│   │   │   └── riskUpdate.ts
+│   │   └── tsconfig.json
+│   ├── api-gateway
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── index.ts
+│   │   │   ├── middleware.ts
+│   │   │   ├── routes
+│   │   │   │   ├── accounts.ts
+│   │   │   │   ├── auth.ts
+│   │   │   │   ├── market.ts
+│   │   │   │   ├── orders.ts
+│   │   │   │   ├── positions.ts
+│   │   │   │   └── wallet.ts
+│   │   │   └── schema
+│   │   │       ├── orderSchema.ts
+│   │   │       └── signupSchema.ts
+│   │   └── tsconfig.json
+│   ├── candle-service
+│   │   ├── dist
+│   │   │   ├── aggregator.js
+│   │   │   ├── apps
+│   │   │   │   └── candle-service
+│   │   │   │       └── src
+│   │   │   │           ├── aggregator.d.ts
+│   │   │   │           ├── aggregator.d.ts.map
+│   │   │   │           └── aggregator.js
+│   │   │   ├── candle-service
+│   │   │   │   └── src
+│   │   │   │       ├── aggregator.d.ts
+│   │   │   │       ├── aggregator.d.ts.map
+│   │   │   │       └── aggregator.js
+│   │   │   └── packages
+│   │   │       ├── db
+│   │   │       │   └── src
+│   │   │       │       ├── index.d.ts
+│   │   │       │       ├── index.d.ts.map
+│   │   │       │       └── index.js
+│   │   │       └── redis
+│   │   │           └── src
+│   │   │               ├── index.d.ts
+│   │   │               ├── index.d.ts.map
+│   │   │               └── index.js
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── aggregator.ts
+│   │   │   ├── bootstrap.ts
+│   │   │   ├── index.ts
+│   │   │   └── tickListener.ts
+│   │   └── tsconfig.json
+│   ├── execution-engine
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── fillHandler.ts
+│   │   │   ├── index.ts
+│   │   │   ├── orderExecuter.ts
+│   │   │   ├── reconcillation.ts
+│   │   │   └── tradeLogic.ts
+│   │   └── tsconfig.json
+│   ├── internal-exchange
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── executionENgine.ts
+│   │   │   └── index.ts
+│   │   └── tsconfig.json
+│   ├── market-data-service
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── index.ts
+│   │   │   └── pricing.ts
+│   │   └── tsconfig.json
+│   └── ws-service
+│       ├── package.json
+│       ├── src
+│       │   └── index.ts
+│       └── tsconfig.json
+├── package.json
+├── packages
+│   ├── config
+│   ├── db
+│   │   ├── dist
+│   │   │   ├── index.d.ts
+│   │   │   ├── index.d.ts.map
+│   │   │   └── index.js
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   └── index.ts
+│   │   └── tsconfig.json
+│   ├── eslint-config
+│   │   ├── base.js
+│   │   ├── next.js
+│   │   ├── package.json
+│   │   ├── react-internal.js
+│   │   └── README.md
+│   ├── redis
+│   │   ├── dist
+│   │   │   ├── index.d.ts
+│   │   │   ├── index.d.ts.map
+│   │   │   └── index.js
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── index.d.ts
+│   │   │   ├── index.d.ts.map
+│   │   │   └── index.ts
+│   │   └── tsconfig.json
+│   ├── types
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── account.ts
+│   │   │   ├── market.ts
+│   │   │   └── trading.ts
+│   │   └── tsconfig.json
+│   ├── typescript-config
+│   │   ├── base.json
+│   │   ├── nextjs.json
+│   │   ├── package.json
+│   │   └── react-library.json
+│   ├── ui
+│   │   ├── eslint.config.mjs
+│   │   ├── package.json
+│   │   ├── src
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   └── code.tsx
+│   │   └── tsconfig.json
+│   └── utils
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── README.md
 ```
 
-### Develop
+Each service is independently runnable via `pnpm dev` and communicates only through Redis or REST.
 
-To develop all apps and packages, run the following command:
+---
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+# Main Services & Responsibilities
 
-```sh
-cd my-turborepo
-turbo dev
+## API Gateway
+
+- Handles `POST /auth/signup`, `POST /auth/signin`
+- JWT authentication middleware
+- CRUD for accounts
+- Market endpoints
+- Order placement
+- Position fetching
+- Wallet management
+
+### Main Endpoints
+
+```http
+POST /auth/signup
+POST /auth/signin
+
+GET /accounts
+POST /accounts
+
+POST /orders
+GET /orders
+
+GET /positions
+
+GET /market/ticker/:symbol
+GET /market/candles/:symbol
+
+POST /wallet/deposit
+POST /wallet/withdraw
+GET /wallet/history
 ```
 
-Without global `turbo`, use your package manager:
+---
 
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+## Market Data Service
+
+- Connects to Binance WebSocket
+- Publishes raw ticks (`prices:tick:*`)
+- Publishes broker-spread tickers (`prices:ticker:*`)
+- Stores raw ticker (`raw:ticker:*`) for execution pricing
+
+---
+
+## Candle Service
+
+- Subscribes to `prices:tick:*`
+- Aggregates OHLCV candles
+- Stores candles in TimescaleDB
+- Publishes closed candles to frontend
+
+---
+
+## Execution Engine
+
+- Consumes `orders_stream`
+- Validates margin
+- Calculates leverage requirements
+- Decides A-book / B-book route
+- Sends execution requests
+- Updates:
+  - orders
+  - trades
+  - balances
+  - positions
+  - ledger
+
+Publishes:
+
+- `orders_updates`
+- `position_updates`
+
+---
+
+## Internal Exchange
+
+- Simulated exchange execution layer
+- Reads market prices from Redis
+- Applies:
+  - spread
+  - slippage
+  - commission
+- Checks free margin
+- Returns execution result
+
+---
+
+## Analytics Service
+
+### PnL Updater
+
+- Subscribes to live ticker updates
+- Recalculates unrealised PnL
+- Updates:
+  - equity
+  - free margin
+
+### Risk Engine
+
+Runs periodically and updates:
+
+- win rate
+- holding duration
+- trade frequency
+- user risk score
+
+Used for A-book / B-book routing.
+
+---
+
+## WebSocket Service
+
+- Pushes:
+  - live prices
+  - candles
+  - order updates
+  - position updates
+- Supports dynamic subscriptions
+- Handles frontend real-time sync
+
+---
+
+# Order Lifecycle
+
+```txt
+PENDING
+   ↓
+QUEUED
+   ↓
+SENT_TO_EXCHANGE
+   ↓
+ACKNOWLEDGED
+   ↓
+FILLED / PARTIALLY_FILLED / REJECTED
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+If margin is insufficient:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
+```txt
+Order → REJECTED
 ```
 
-Without global `turbo`:
+No funds are locked.
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+# Running the Project
+
+## Prerequisites
+
+- Node.js
+- pnpm
+- Redis
+- PostgreSQL
+- TimescaleDB
+
+---
+
+## Installation
+
+```bash
+pnpm install
 ```
 
-### Remote Caching
+---
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+## Start Services
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
+```bash
+turbo run dev
 ```
 
-Without global `turbo`, use your package manager:
+---
 
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
+## API
+
+```txt
+http://localhost:4000
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+---
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+## WebSocket
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
+```txt
+ws://localhost:3001
 ```
 
-Without global `turbo`:
+---
 
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
+# Testing
+
+Use Postman or cURL to:
+
+- Sign up / sign in
+- Create demo accounts
+- Place leveraged trades
+- Watch live PnL updates
+- Verify Redis streams
+- Verify ledger entries
+
+Useful debugging tools:
+
+```bash
+redis-cli
 ```
 
-## Useful Links
+```sql
+SELECT * FROM orders;
+SELECT * FROM positions;
+SELECT * FROM ledger;
+```
 
-Learn more about the power of Turborepo:
+---
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+# Inspiration
+
+Inspired by modern CFD broker architectures:
+
+- Exness
+- IC Markets
+- Pepperstone
+- Bybit CFD systems
+
+This project demonstrates:
+
+- Event-driven microservices
+- Real-time trading systems
+- Financial ledger architecture
+- Margin and leverage handling
+- Broker-style execution pipelines
+- Redis stream-based order execution
