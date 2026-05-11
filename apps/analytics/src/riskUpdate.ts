@@ -1,8 +1,6 @@
-// risk-engine/src/index.ts
 import { query } from '@repo/db';
 
-async function updateRiskScores() {
-  // Simple example: compute win rate, trade count, and assign score
+export async function updateRiskScores() {
   try {
     const users = await query(`SELECT DISTINCT user_id FROM accounts`);
     for (const { user_id } of users) {
@@ -19,16 +17,11 @@ async function updateRiskScores() {
         let score = 50;
         if (s.win_rate > 0.6) score += 20;
         if (s.total > 100) score += 10;
-        if (s.avg_holding < 60) score += 15; // short-term trader? maybe riskier
-
+        if (s.avg_holding < 60) score += 15;
         await query(`UPDATE accounts SET risk_score = $1 WHERE user_id = $2`, [score, user_id]);
       }
     }
   } catch (err) {
-    console.error('Risk engine updateRiskScores failed (non-fatal):', String(err));
+    console.error('updateRiskScores error:', err);
   }
 }
-
-// Run every 10 minutes
-setInterval(updateRiskScores, 10 * 60 * 1000);
-console.log('Risk engine running');

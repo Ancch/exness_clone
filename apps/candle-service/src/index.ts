@@ -9,7 +9,7 @@ async function main() {
   const { startTickListener } = await import('./tickListener.js');
   const { bootstrapHistoricalCandles } = await import('./bootstrap.js');
 
-  const SYMBOLS = ['BTCUSDT'];
+  const SYMBOLS = ['btcusdt', 'ethusdt', 'solusdt', 'adausdt', 'xrpusdt', 'bnbusdt', 'dogeusdt'];
   const INTERVALS = ['1m', '5m', '1h'];
 
   for (const symbol of SYMBOLS) {
@@ -17,7 +17,7 @@ async function main() {
       await bootstrapHistoricalCandles(symbol, interval);
     }
   }
-  startTickListener();
+  startTickListener(SYMBOLS);
   console.log('Candle service running…');
 }
 

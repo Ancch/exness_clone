@@ -42,6 +42,9 @@ export function handleTick(tick: Tick) {
         startTime: bucket,
       };
       activeCandles.set(key, candle);
+    if (intervalStr === '1m') { // Usually, tickers show the 1m or most recent data
+        redis.set(`ticker:${tick.symbol}`, JSON.stringify(candle));
+    } 
     } else {
       candle.high = Math.max(candle.high, tick.price);
       candle.low = Math.min(candle.low, tick.price);

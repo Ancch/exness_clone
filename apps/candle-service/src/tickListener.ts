@@ -2,10 +2,13 @@ import { createRedisClient } from '@repo/redis';
 import { Tick } from '@repo/types/market';
 import { handleTick } from './aggregator';
 
-export function startTickListener() {
+
+
+export function startTickListener(symbols: string[]) {
   const sub = createRedisClient();
-  const symbol = 'BTCUSDT';
-  sub.subscribe(`prices:tick:${symbol}`);
+  for (const symbol of symbols) {
+    sub.subscribe(`prices:tick:${symbol}`);
+  }
 
   sub.on('message', (channel, message) => {
     if (channel.startsWith('prices:tick:')) {
@@ -13,6 +16,4 @@ export function startTickListener() {
       handleTick(tick);
     }
   });
-
-  // reconnect logic if needed (simple version)
 }

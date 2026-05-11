@@ -2,7 +2,8 @@ import axios from 'axios';
 import { query } from '@repo/db';
 
 export async function bootstrapHistoricalCandles(symbol: string, interval: string) {
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=500`;
+  const normalizedSymbol = symbol.toUpperCase();
+  const url = `https://api.binance.com/api/v3/klines?symbol=${normalizedSymbol}&interval=${interval}&limit=500`;
   const response = await axios.get(url);
   const rows = response.data;
 

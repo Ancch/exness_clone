@@ -23,7 +23,7 @@ export async function processOrder(orderId: string) {
 
   const account = (await query(`SELECT * FROM accounts WHERE id = $1`, [order.account_id]))[0];
   const accountType: AccountType = (account.account_type ?? 'standard') as AccountType;
-  const riskScore = account.risk_score || 50;
+  const riskScore = account.risk_score;
   const route = riskScore > 70 ? 'A_BOOK' : 'B_BOOK';
 
   const leverage = order.leverage || AccountTypeConfig[accountType].leverage || 100;
@@ -135,8 +135,9 @@ export async function upsertPosition(
     const newMargin = newQty !== 0 ? (newTotalNotional / leverage) : 0; // recalc margin entirely based on new size
     // Alternative: keep weighted method; but safer to recalc from notional value.
     // We'll recalc based on total notional value:
+    const effectiveLeverage = pos.leverage || leverage;
+    const marginRequired = (Math.abs(newQty) * newAvg) / effectiveLeverage;
     const leverageUsed = pos.leverage || leverage;
-    const marginRequired = newTotalNotional / leverageUsed;
 
     if (newQty === 0) {
       // Position closed
@@ -182,14 +183,6 @@ export async function upsertPosition(
 }
 
 
-// // apps/execution-engine/src/tradeLogic.ts
-// import { createRedisClient } from '@repo/redis';
-// import { query } from '@repo/db';
-// import { v4 as uuid } from 'uuid';
-// import { Ticker } from '@repo/types/market';
-
-// const redis = createRedisClient();
-// const redisPub = redis.duplicate();
 
 function parseStreamFields(fields: string[]): Record<string, string> {
   const obj: Record<string, string> = {};
@@ -238,113 +231,3 @@ async function waitForExecutionResult(requestId: string, timeoutMs: number): Pro
   }
   throw new Error('Timeout waiting for execution result');
 }
-
-// export async function processOrder(orderId: string) {
-//   const order = (await query(`SELECT * FROM orders WHERE id = $1`, [orderId]))[0];
-//   if (!order) return;
-
-//   const account = (await query(`SELECT * FROM accounts WHERE id = $1`, [order.account_id]))[0];
-//   const riskScore = account.risk_score || 50;
-//   const accountType = account.account_type || 'standard';
-
-//   // A/B routing decision (both go to internal exchange, but we stamp the route)
-//   const route = riskScore > 70 ? 'A_BOOK' : 'B_BOOK';
-
-//   const requestId = uuid();
-//   await redis.xadd('execution_requests', '*',
-//     'requestId', requestId,
-//     'orderId', order.id,
-//     'accountId', order.account_id,
-//     'symbol', order.symbol,
-//     'side', order.side,
-//     'quantity', String(order.quantity),
-//     'accountType', accountType,
-//     'route', route
-//   );
-
-//   // Update status to indicate submission
-//   await query(`UPDATE orders SET status = 'SENT_TO_EXCHANGE', client_order_id = $1, updated_at = NOW() WHERE id = $2`, [orderId, orderId]);
-
-//   const result = await waitForExecutionResult(requestId, 10000);
-
-//   if (!result.success) {
-//     await query(`UPDATE orders SET status = 'REJECTED' WHERE id = $1`, [orderId]);
-//     return;
-//   }
-
-//   const execPrice = result.executionPrice;
-//   const commission = result.commission || 0;
-//   const qty = order.quantity;
-
-//   // Determine balance change
-//   const tradeCost = order.side === 'BUY' ? execPrice * qty : -execPrice * qty;
-//   const balanceChange = order.side === 'BUY' ? -tradeCost - commission : -tradeCost - commission; // careful with signs
-
-//   // Simplified: net balance movement
-//   const netChange = order.side === 'BUY' ? -(execPrice * qty + commission) : (execPrice * qty - commission);
-
-//   // Update account balance
-//   await query(`UPDATE accounts SET balance = balance + $1 WHERE id = $2`, [netChange, order.account_id]);
-
-//   // Create trade
-//   const tradeId = uuid();
-//   await query(
-//     `INSERT INTO trades (id, order_id, symbol, quantity, price) VALUES ($1,$2,$3,$4,$5)`,
-//     [tradeId, order.id, order.symbol, qty, execPrice]
-//   );
-
-//   // Update order (note: some DB schemas may not have a commission column)
-//   try {
-//     await query(`UPDATE orders SET status = 'FILLED', executed_price = $1 WHERE id = $2`,
-//       [execPrice, order.id]);
-//   } catch (err) {
-//     console.error('Failed to update orders row with executed_price (possibly missing column), error:', err);
-//     // Don't throw — continue to update positions/ledger so the system progresses
-//   }
-
-//   // Upsert position
-//   await upsertPosition(order.account_id, order.user_id, order.symbol, order.side, qty, execPrice);
-
-//   // Equity = balance (for now)
-//   await query(`UPDATE accounts SET equity = balance WHERE id = $1`, [order.account_id]);
-
-//   // Ledger
-//   await query(`INSERT INTO ledger (account_id, change_amount, reason) VALUES ($1,$2,'trade')`,
-//     [order.account_id, netChange]);
-
-//   // Broadcast updates
-//   await redisPub.publish('orders_updates', JSON.stringify({
-//     type: 'order_filled', orderId: order.id, executedPrice: execPrice, commission
-//   }));
-//   await redisPub.publish('position_updates', JSON.stringify({
-//     type: 'position_changed', accountId: order.account_id, symbol: order.symbol
-//   }));
-// }
-
-// export async function upsertPosition(accountId: string, userId: string, symbol: string, side: string, quantity: number, price: number) {
-//   // Your existing upsertPosition code (unchanged)
-//   const existing = await query(`SELECT * FROM positions WHERE account_id = $1 AND symbol = $2`, [accountId, symbol]);
-//   if (existing.length === 0) {
-//     const sign = side === 'BUY' ? 1 : -1;
-//     await query(`INSERT INTO positions (user_id, account_id, symbol, quantity, avg_price) VALUES ($1,$2,$3,$4,$5)`,
-//       [userId, accountId, symbol, sign * quantity, price]);
-//   } else {
-//     const pos = existing[0];
-//     const currentQty = pos.quantity;
-//     const currentAvg = pos.avg_price;
-//     const newQty = side === 'BUY' ? currentQty + quantity : currentQty - quantity;
-//     if (newQty === 0) {
-//       // Position closed – calculate PnL and remove
-//       const costBasis = Math.abs(currentQty) * currentAvg;
-//       const pnl = (side === 'BUY' ? -1 : 1) * (currentQty > 0 ? 1 : -1) * (quantity * price - costBasis);
-//       await query(`DELETE FROM positions WHERE id = $1`, [pos.id]);
-//       // Optionally insert realized PnL into ledger
-//     } else {
-//       const newAvg = currentQty + (side === 'BUY' ? quantity : -quantity) !== 0
-//         ? (currentQty * currentAvg + (side === 'BUY' ? quantity * price : -quantity * price)) / newQty
-//         : 0;
-//       await query(`UPDATE positions SET quantity = $1, avg_price = $2, updated_at = NOW() WHERE id = $3`,
-//         [newQty, newAvg, pos.id]);
-//     }
-//   }
-// }

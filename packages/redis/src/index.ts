@@ -10,7 +10,7 @@ export function createRedisClient() {
         // Development fallback — warn and connect to local Redis if available
         url = 'redis://127.0.0.1:6379';
         // eslint-disable-next-line no-console
-        console.warn(`REDIS_URL not set — falling back to ${url} (development only)`);
+        console.warn(`REDIS_URL falling back to ${url} (development only)`);
     }
 
     return new Redis(url, {

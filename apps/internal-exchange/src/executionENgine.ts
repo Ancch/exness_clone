@@ -13,7 +13,7 @@ export async function executeSimulatedOrder(request: any) {
   const leverage = parseInt(requestedLeverage) || AccountTypeConfig[accountType as keyof typeof AccountTypeConfig]?.leverage || 100;
 
   // Get raw ticker
-  const rawStr = await redis.get(`ticker:${symbol}`);
+  const rawStr = await redis.get(`raw:ticker:${symbol}`);
   if (!rawStr) return { success: false, error: 'No price available' };
   const raw: { bid: number; ask: number; last: number } = JSON.parse(rawStr);
 
